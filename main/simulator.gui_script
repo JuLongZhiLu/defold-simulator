@@ -76,7 +76,7 @@ local function create_new_node(self, node_type, pos)
 	gui.set_font(title_node, "font")
 	gui.set_parent(title_node, root_node)
 
-	local val_text = (node_type == machinations.NODE_TYPE.SOURCE) and "∞" or 
+	local val_text = (node_type == machinations.NODE_TYPE.SOURCE) and "∞" or
 	(node_type == machinations.NODE_TYPE.DRAIN and "(-)" or "0")
 	local value_node = gui.new_text_node(vmath.vector3(0, -10, 0), val_text)
 	gui.set_font(value_node, "font")
@@ -180,6 +180,8 @@ function init(self)
 	self.is_playing = false
 	self.play_timer = nil
 
+	self.mouse_pos = vmath.vector3(0, 0, 0)
+
 	-- 选中状态
 	self.selected_node_id = nil
 	self.selected_link_index = nil
@@ -207,9 +209,9 @@ function init(self)
 end
 
 function on_input(self, action_id, action)
-	local mouse_pos = vmath.vector3(action.x, action.y, 0)
 
 	if action_id == hash("touch") then
+		self.mouse_pos = vmath.vector3(action.x, action.y, 0)
 		if action.pressed then
 			-- 1. 检查控制按钮
 			for _, btn in ipairs(self.control_buttons) do
@@ -280,9 +282,9 @@ function on_input(self, action_id, action)
 			-- 5. 点击空白处
 			if not hit_anything then
 				clear_selection(self)
-				if self.is_linking_mode then 
-					self.is_linking_mode = false 
-					gui.set_enabled(self.temp_line, false) 
+				if self.is_linking_mode then
+					self.is_linking_mode = false
+					gui.set_enabled(self.temp_line, false)
 				end
 			end
 
@@ -311,9 +313,59 @@ function on_input(self, action_id, action)
 		elseif action.released then
 			self.is_panning = false
 		end
+		-- ================================================================
+		-- ==================== 新增：删除功能的逻辑 ====================
+		-- ================================================================
+	elseif action_id == hash("backspace") or action_id == hash("delete") then
+		if action.pressed then
+			-- 1. 检查是否有选中的节点，并执行删除
+			if self.selected_node_id then
+				local id_to_delete = self.selected_node_id
+
+				-- 从GUI中删除节点
+				gui.delete_node(self.gui_nodes[id_to_delete].root)
+				self.gui_nodes[id_to_delete] = nil
+
+				-- 从模拟核心中删除节点及其相关连线
+				-- 注意：这要求在 machinations_core.lua 中实现 remove_node 方法
+				self.sim:remove_node(id_to_delete)
+
+				-- 从GUI中删除与被删节点相关的连线
+				-- 从后向前遍历，以安全地在循环中删除元素
+				for i = #self.gui_links, 1, -1 do
+					local link = self.gui_links[i]
+					if link.from_id == id_to_delete or link.to_id == id_to_delete then
+						gui.delete_node(link.line)
+						gui.delete_node(link.text)
+						table.remove(self.gui_links, i)
+					end
+				end
+
+				self.selected_node_id = nil -- 清除选择状态
+				update_links(self) -- 重新刷新一下可能存在的其他连线
+				return true
+
+				-- 2. 检查是否有选中的连线，并执行删除
+			elseif self.selected_link_index then
+				local index_to_delete = self.selected_link_index
+				local link_data = self.gui_links[index_to_delete]
+
+				-- 从模拟核心中删除连线
+				-- 注意：这要求在 machinations_core.lua 中实现 remove_link 方法
+				self.sim:remove_link(link_data.from_id, link_data.to_id)
+
+				-- 从GUI中删除连线
+				gui.delete_node(link_data.line)
+				gui.delete_node(link_data.text)
+				table.remove(self.gui_links, index_to_delete)
+
+				self.selected_link_index = nil -- 清除选择状态
+				return true
+			end
+		end
 	end
 
-	if not action_id then 
+	if not action_id then
 		if self.is_panning then
 			local dx, dy = action.x - self.last_mouse_x, action.y - self.last_mouse_y
 			for _, nd in pairs(self.gui_nodes) do
@@ -326,7 +378,50 @@ function on_input(self, action_id, action)
 			gui.set_position(self.gui_nodes[self.dragged_node_id].root, vmath.vector3(action.x + self.drag_offset.x, action.y + self.drag_offset.y, 0))
 			update_links(self)
 		elseif self.is_linking_mode and self.link_start_node_id then
-			draw_line_between(self, self.temp_line, gui.get_position(self.gui_nodes[self.link_start_node_id].root), mouse_pos)
+			draw_line_between(self, self.temp_line, gui.get_position(self.gui_nodes[self.link_start_node_id].root), self.mouse_pos)
 		end
 	end
 end
+
+--[[
+
+重要提示：
+为了让删除功能在模拟层面也生效，你需要在你的 "main/machinations_core.lua" 文件中
+为 simulation 对象添加 remove_node 和 remove_link 两个方法。
+以下是这两个方法可能的实现方式，你可以将其整合到你的模块中：
+
+--- 在 machinations_core.lua 中 ---
+
+-- 删除节点以及所有与之相关的连接
+function simulation:remove_node(node_id)
+	if not self.nodes[node_id] then return end
+
+	-- 1. 删除节点本身
+	self.nodes[node_id] = nil
+
+	-- 2. 删除所有相关的连接（从后向前遍历以保证安全）
+	local i = #self.links
+	while i >= 1 do
+		local link = self.links[i]
+		if link.from == node_id or link.to == node_id then
+			table.remove(self.links, i)
+		end
+		i = i - 1
+	end
+end
+
+-- 删除一个特定的连接
+function simulation:remove_link(from_id, to_id)
+	local i = #self.links
+	while i >= 1 do
+		local link = self.links[i]
+		-- 假设两个节点间只有一条唯一的连线
+		if link.from == from_id and link.to == to_id then
+			table.remove(self.links, i)
+			break -- 找到并删除后即可退出
+		end
+		i = i - 1
+	end
+end
+
+]]

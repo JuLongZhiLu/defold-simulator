@@ -100,6 +100,39 @@ function M.create_simulation()
 		end
 	end
 
+	-- 删除节点以及所有与之相关的连接
+	function sim:remove_node(node_id)
+		if not self.nodes[node_id] then return end
+
+		-- 1. 删除节点本身
+		self.nodes[node_id] = nil
+
+		-- 2. 删除所有相关的连接（从后向前遍历以保证安全）
+		local i = #self.links
+		while i >= 1 do
+			local link = self.links[i]
+			if link.from == node_id or link.to == node_id then
+				table.remove(self.links, i)
+			end
+			i = i - 1
+		end
+	end
+
+	-- 删除一个特定的连接
+	function sim:remove_link(from_id, to_id)
+		local i = #self.links
+		while i >= 1 do
+			local link = self.links[i]
+			-- 假设两个节点间只有一条唯一的连线
+			if link.from == from_id and link.to == to_id then
+				table.remove(self.links, i)
+				break -- 找到并删除后即可退出
+			end
+			i = i - 1
+		end
+	end
+	
+
 	return sim
 end
 

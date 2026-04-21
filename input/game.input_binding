@@ -1,3 +1,11 @@
+key_trigger {
+  input: KEY_BACKSPACE
+  action: "backspace"
+}
+key_trigger {
+  input: KEY_DEL
+  action: "delete"
+}
 mouse_trigger {
   input: MOUSE_BUTTON_1
   action: "touch"
