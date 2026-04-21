@@ -6,9 +6,12 @@ local NODE_COLORS = {
 	[machinations.NODE_TYPE.DRAIN]  = vmath.vector4(0.9, 0.2, 0.2, 1)
 }
 
+local COLOR_WHITE = vmath.vector4(1, 1, 1, 1)
+local COLOR_GREY = vmath.vector4(0.8, 0.8, 0.8, 1)
+local COLOR_HIGHLIGHT = vmath.vector4(1, 0.9, 0, 1) -- 亮黄色高亮
+
 -- ================= 工具函数 =================
 
--- 内部划线辅助数学函数
 local function draw_line_between(self, line_node, p1, p2, text_node)
 	local dx = p2.x - p1.x
 	local dy = p2.y - p1.y
@@ -26,7 +29,6 @@ local function draw_line_between(self, line_node, p1, p2, text_node)
 	end
 end
 
--- 创建按钮的通用函数 (返回背景节点)
 local function create_button(self, text, type, pos, color, group_table)
 	local bg = gui.new_box_node(pos, vmath.vector3(100, 40, 0))
 	gui.set_color(bg, color or vmath.vector4(0.3, 0.3, 0.3, 1))
@@ -34,6 +36,20 @@ local function create_button(self, text, type, pos, color, group_table)
 	gui.set_font(label, "font")
 	table.insert(group_table, { bg = bg, type = type, label = label })
 	return bg
+end
+
+-- 清除所有当前的高亮显示
+local function clear_selection(self)
+	self.selected_node_id = nil
+	self.selected_link_index = nil
+	-- 隐藏所有节点高亮框
+	for id, node in pairs(self.gui_nodes) do
+		gui.set_enabled(node.highlight, false)
+	end
+	-- 还原所有连线颜色
+	for _, link in ipairs(self.gui_links) do
+		gui.set_color(link.line, COLOR_GREY)
+	end
 end
 
 -- 动态在屏幕上创建一个新节点
@@ -45,6 +61,12 @@ local function create_new_node(self, node_type, pos)
 
 	local root_node = gui.new_box_node(pos, vmath.vector3(0,0,0))
 	gui.set_color(root_node, vmath.vector4(1,1,1,0))
+
+	-- 【新增】高亮边框节点：比bg大一点(110x110)，放在bg后面
+	local highlight_node = gui.new_box_node(vmath.vector3(0, 0, 0), vmath.vector3(110, 110, 0))
+	gui.set_color(highlight_node, COLOR_HIGHLIGHT)
+	gui.set_parent(highlight_node, root_node)
+	gui.set_enabled(highlight_node, false) -- 默认关闭
 
 	local bg_node = gui.new_box_node(vmath.vector3(0, 0, 0), vmath.vector3(100, 100, 0))
 	gui.set_color(bg_node, NODE_COLORS[node_type] or vmath.vector4(0.5, 0.5, 0.5, 1))
@@ -64,6 +86,7 @@ local function create_new_node(self, node_type, pos)
 	self.gui_nodes[id] = {
 		root = root_node,
 		bg = bg_node,
+		highlight = highlight_node, -- 存储引用
 		val_node = value_node,
 		type = node_type
 	}
@@ -83,7 +106,7 @@ local function create_new_link(self, from_id, to_id, rate)
 	self.sim:add_link(from_id, to_id, rate)
 
 	local line_node = gui.new_box_node(vmath.vector3(0,0,0), vmath.vector3(1, 4, 0))
-	gui.set_color(line_node, vmath.vector4(0.8, 0.8, 0.8, 1))
+	gui.set_color(line_node, COLOR_GREY)
 
 	local rate_node = gui.new_text_node(vmath.vector3(0,0,0), "Rate: " .. rate)
 	gui.set_font(rate_node, "font")
@@ -121,14 +144,11 @@ end
 local function toggle_play(self)
 	self.is_playing = not self.is_playing
 	if self.is_playing then
-		-- 开启定时器
 		self.play_timer = timer.delay(1.0, true, function() run_step(self) end)
-		-- 按钮视觉反馈：变成深蓝色/紫色
 		for _, btn in ipairs(self.control_buttons) do
 			if btn.type == "PLAY" then gui.set_text(btn.label, "PAUSE") end
 		end
 	else
-		-- 停止定时器
 		if self.play_timer then timer.cancel(self.play_timer) end
 		self.play_timer = nil
 		for _, btn in ipairs(self.control_buttons) do
@@ -138,17 +158,13 @@ local function toggle_play(self)
 end
 
 local function reset_simulation(self)
-	-- 1. 停止播放
 	if self.is_playing then toggle_play(self) end
-	-- 2. 数据清零
 	for id, node in pairs(self.sim.nodes) do
 		node.value = 0
 		node.next_value = 0
 	end
 	self.sim.step_count = 0
-	-- 3. 刷新UI
 	update_gui(self)
-	print("Simulation Reset.")
 end
 
 -- ================= 生命周期 =================
@@ -161,30 +177,29 @@ function init(self)
 	self.gui_links = {}
 	self.node_counter = 0
 
-	-- 状态变量
 	self.is_playing = false
 	self.play_timer = nil
 
-	-- 交互状态
+	-- 选中状态
+	self.selected_node_id = nil
+	self.selected_link_index = nil
+
 	self.dragged_node_id = nil
 	self.drag_offset = vmath.vector3()
 	self.is_panning = false
 	self.is_linking_mode = false
 	self.link_start_node_id = nil
 
-	-- 临时连线
 	self.temp_line = gui.new_box_node(vmath.vector3(0,0,0), vmath.vector3(1, 4, 0))
 	gui.set_color(self.temp_line, vmath.vector4(1, 0.5, 0, 1))
 	gui.set_enabled(self.temp_line, false)
 
-	-- A. 顶部工具栏 (创建节点)
 	self.toolbar_buttons = {}
 	create_button(self, "Source", machinations.NODE_TYPE.SOURCE, vmath.vector3(80, 680, 0), vmath.vector4(0.2, 0.4, 0.2, 1), self.toolbar_buttons)
 	create_button(self, "Pool", machinations.NODE_TYPE.POOL, vmath.vector3(200, 680, 0), vmath.vector4(0.2, 0.3, 0.5, 1), self.toolbar_buttons)
 	create_button(self, "Drain", machinations.NODE_TYPE.DRAIN, vmath.vector3(320, 680, 0), vmath.vector4(0.5, 0.2, 0.2, 1), self.toolbar_buttons)
 	create_button(self, "Link", "LINK", vmath.vector3(440, 680, 0), vmath.vector4(0.4, 0.4, 0.4, 1), self.toolbar_buttons)
 
-	-- B. 底部控制栏 (Step, Play, Reset)
 	self.control_buttons = {}
 	create_button(self, "STEP", "STEP", vmath.vector3(200, 80, 0), vmath.vector4(0.1, 0.1, 0.6, 1), self.control_buttons)
 	create_button(self, "PLAY", "PLAY", vmath.vector3(320, 80, 0), vmath.vector4(0.1, 0.1, 0.6, 1), self.control_buttons)
@@ -196,7 +211,7 @@ function on_input(self, action_id, action)
 
 	if action_id == hash("touch") then
 		if action.pressed then
-			-- 1. 检查底部控制按钮 (Step, Play, Reset)
+			-- 1. 检查控制按钮
 			for _, btn in ipairs(self.control_buttons) do
 				if gui.pick_node(btn.bg, action.x, action.y) then
 					if btn.type == "STEP" then run_step(self)
@@ -207,9 +222,10 @@ function on_input(self, action_id, action)
 				end
 			end
 
-			-- 2. 检查顶部工具栏按钮
+			-- 2. 检查工具栏
 			for _, btn in ipairs(self.toolbar_buttons) do
 				if gui.pick_node(btn.bg, action.x, action.y) then
+					clear_selection(self) -- 切换模式时清除选中
 					if btn.type == "LINK" then
 						self.is_linking_mode = true
 						self.link_start_node_id = nil
@@ -221,8 +237,10 @@ function on_input(self, action_id, action)
 			end
 
 			-- 3. 检查是否点中了节点
+			local hit_anything = false
 			for id, node_data in pairs(self.gui_nodes) do
 				if gui.pick_node(node_data.bg, action.x, action.y) then
+					hit_anything = true
 					if self.is_linking_mode then
 						if not self.link_start_node_id then
 							self.link_start_node_id = id
@@ -234,6 +252,11 @@ function on_input(self, action_id, action)
 							gui.set_enabled(self.temp_line, false)
 						end
 					else
+						-- 【高亮逻辑】选中节点
+						clear_selection(self)
+						self.selected_node_id = id
+						gui.set_enabled(node_data.highlight, true)
+
 						self.dragged_node_id = id
 						local pos = gui.get_position(node_data.root)
 						self.drag_offset.x = pos.x - action.x
@@ -243,7 +266,25 @@ function on_input(self, action_id, action)
 				end
 			end
 
-			if self.is_linking_mode then self.is_linking_mode = false gui.set_enabled(self.temp_line, false) end
+			-- 4. 检查是否点中了连线 (通过点击 Rate 文字来选中)
+			for i, link_data in ipairs(self.gui_links) do
+				if gui.pick_node(link_data.text, action.x, action.y) then
+					hit_anything = true
+					clear_selection(self)
+					self.selected_link_index = i
+					gui.set_color(link_data.line, COLOR_HIGHLIGHT) -- 线条变黄
+					return true
+				end
+			end
+
+			-- 5. 点击空白处
+			if not hit_anything then
+				clear_selection(self)
+				if self.is_linking_mode then 
+					self.is_linking_mode = false 
+					gui.set_enabled(self.temp_line, false) 
+				end
+			end
 
 		elseif action.released then
 			self.dragged_node_id = nil
