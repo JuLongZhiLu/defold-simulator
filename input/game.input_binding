@@ -3,6 +3,6 @@ mouse_trigger {
   action: "touch"
 }
 mouse_trigger {
-  input: MOUSE_BUTTON_2
+  input: MOUSE_BUTTON_3
   action: "right_click"
 }

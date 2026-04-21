@@ -5,9 +5,25 @@ local NODE_COLORS = {
 	[machinations.NODE_TYPE.DRAIN]  = vmath.vector4(0.9, 0.2, 0.2, 1)
 }
 
-
-
 -- ================= 工具函数 =================
+
+-- 内部划线辅助数学函数
+local function draw_line_between(self, line_node, p1, p2, text_node)
+	local dx = p2.x - p1.x
+	local dy = p2.y - p1.y
+	local distance = math.sqrt(dx * dx + dy * dy)
+	local angle = math.atan2(dy, dx)
+	local mid_x = p1.x + dx / 2
+	local mid_y = p1.y + dy / 2
+
+	gui.set_position(line_node, vmath.vector3(mid_x, mid_y, 0))
+	gui.set_size(line_node, vmath.vector3(distance, 4, 0))
+	gui.set_rotation(line_node, vmath.quat_rotation_z(angle))
+
+	if text_node then
+		gui.set_position(text_node, vmath.vector3(mid_x, mid_y + 20, 0))
+	end
+end
 
 -- 创建顶部工具栏按钮
 local function create_toolbar_button(self, text, node_type, pos)
@@ -53,6 +69,15 @@ local function create_new_node(self, node_type, pos)
 	}
 end
 
+-- 刷新所有连线位置
+local function update_links(self)
+	for _, g_link in ipairs(self.gui_links) do
+		local p1 = gui.get_position(self.gui_nodes[g_link.from_id].root)
+		local p2 = gui.get_position(self.gui_nodes[g_link.to_id].root)
+		draw_line_between(self,g_link.line, p1, p2, g_link.text)
+	end
+end
+
 -- 动态创建一条连线
 local function create_new_link(self, from_id, to_id, rate)
 	-- 1. 注册到核心模拟器
@@ -73,35 +98,12 @@ local function create_new_link(self, from_id, to_id, rate)
 		text = rate_node
 	})
 
-	self:update_links()
+	update_links(self)
 end
 
--- 刷新所有连线位置
-local function update_links(self)
-	for _, g_link in ipairs(self.gui_links) do
-		local p1 = gui.get_position(self.gui_nodes[g_link.from_id].root)
-		local p2 = gui.get_position(self.gui_nodes[g_link.to_id].root)
-		self:draw_line_between(g_link.line, p1, p2, g_link.text)
-	end
-end
 
--- 内部划线辅助数学函数
-local function draw_line_between(self, line_node, p1, p2, text_node)
-	local dx = p2.x - p1.x
-	local dy = p2.y - p1.y
-	local distance = math.sqrt(dx * dx + dy * dy)
-	local angle = math.atan2(dy, dx)
-	local mid_x = p1.x + dx / 2
-	local mid_y = p1.y + dy / 2
 
-	gui.set_position(line_node, vmath.vector3(mid_x, mid_y, 0))
-	gui.set_size(line_node, vmath.vector3(distance, 4, 0))
-	gui.set_rotation(line_node, vmath.quat_rotation_z(angle))
 
-	if text_node then
-		gui.set_position(text_node, vmath.vector3(mid_x, mid_y + 20, 0))
-	end
-end
 
 -- ================= 定时刷新UI =================
 local function update_gui(self)
@@ -155,6 +157,7 @@ function on_input(self, action_id, action)
 
 	-- 【左键操作：点击工具栏 / 拖拽节点】
 	if action_id == hash("touch") then
+		print("touch")
 		if action.pressed then
 			-- 1. 检查是否点击了工具栏按钮
 			for _, btn in ipairs(self.toolbar_buttons) do
@@ -182,6 +185,7 @@ function on_input(self, action_id, action)
 
 		-- 【右键操作：建立连线 / 添加资源】
 	elseif action_id == hash("right_click") then
+		print("right_click")
 		if action.pressed then
 			-- 寻找连线起点
 			for id, node_data in pairs(self.gui_nodes) do
