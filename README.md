@@ -1,13 +1,12 @@
-# Welcome to Defold
+I used AI to complete a basic prototype. The remaining functions are more complex and can only be completed by humans bit by bit.
 
-This project was created from the "empty" project template.
+I’ll finish it little by little when I have time.
 
-The settings in ["game.project"](defold://open?path=/game.project) are all the default. A bootstrap empty ["main.collection"](defold://open?path=/main/main.collection) is included.
+I don’t know if I have so many spare time, but I will try my best.
 
-Check out [the documentation pages](https://defold.com/learn) for examples, tutorials, manuals and API docs.
+I think I will use Druid to make remake the GUI part later.
 
-If you run into trouble, help is available in [our forum](https://forum.defold.com).
 
-Happy Defolding!
 
----
+https://github.com/user-attachments/assets/68153975-fdb5-446a-9c4c-f07d191a0ee7
+
