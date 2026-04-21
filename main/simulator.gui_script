@@ -1,289 +1,291 @@
 local machinations = require("main.machinations_core")
 
-local NODE_COLORS = {[machinations.NODE_TYPE.SOURCE] = vmath.vector4(0.2, 0.8, 0.2, 1),
-[machinations.NODE_TYPE.POOL]   = vmath.vector4(0.2, 0.5, 0.9, 1),[machinations.NODE_TYPE.DRAIN]  = vmath.vector4(0.9, 0.2, 0.2, 1)
+local NODE_COLORS = {
+	[machinations.NODE_TYPE.SOURCE] = vmath.vector4(0.2, 0.8, 0.2, 1),
+	[machinations.NODE_TYPE.POOL]   = vmath.vector4(0.2, 0.5, 0.9, 1),
+	[machinations.NODE_TYPE.DRAIN]  = vmath.vector4(0.9, 0.2, 0.2, 1)
 }
 
 -- ================= 工具函数 =================
 
 -- 内部划线辅助数学函数
 local function draw_line_between(self, line_node, p1, p2, text_node)
-local dx = p2.x - p1.x
-local dy = p2.y - p1.y
-local distance = math.sqrt(dx * dx + dy * dy)
-local angle = math.atan2(dy, dx)
-local mid_x = p1.x + dx / 2
-local mid_y = p1.y + dy / 2
+	local dx = p2.x - p1.x
+	local dy = p2.y - p1.y
+	local distance = math.sqrt(dx * dx + dy * dy)
+	local angle = math.atan2(dy, dx)
+	local mid_x = p1.x + dx / 2
+	local mid_y = p1.y + dy / 2
 
-gui.set_position(line_node, vmath.vector3(mid_x, mid_y, 0))
-gui.set_size(line_node, vmath.vector3(distance, 4, 0))
-gui.set_rotation(line_node, vmath.quat_rotation_z(angle))
+	gui.set_position(line_node, vmath.vector3(mid_x, mid_y, 0))
+	gui.set_size(line_node, vmath.vector3(distance, 4, 0))
+	gui.set_rotation(line_node, vmath.quat_rotation_z(angle))
 
-if text_node then
-	gui.set_position(text_node, vmath.vector3(mid_x, mid_y + 20, 0))
+	if text_node then
+		gui.set_position(text_node, vmath.vector3(mid_x, mid_y + 20, 0))
+	end
 end
-end
 
--- 创建顶部工具栏按钮
-local function create_toolbar_button(self, text, node_type, pos)
-local bg = gui.new_box_node(pos, vmath.vector3(100, 40, 0))
-gui.set_color(bg, vmath.vector4(0.3, 0.3, 0.3, 1))
-local label = gui.new_text_node(pos, text)
-gui.set_font(label, "font")
-table.insert(self.toolbar_buttons, { bg = bg, type = node_type })
+-- 创建按钮的通用函数 (返回背景节点)
+local function create_button(self, text, type, pos, color, group_table)
+	local bg = gui.new_box_node(pos, vmath.vector3(100, 40, 0))
+	gui.set_color(bg, color or vmath.vector4(0.3, 0.3, 0.3, 1))
+	local label = gui.new_text_node(pos, text)
+	gui.set_font(label, "font")
+	table.insert(group_table, { bg = bg, type = type, label = label })
+	return bg
 end
 
 -- 动态在屏幕上创建一个新节点
 local function create_new_node(self, node_type, pos)
-self.node_counter = self.node_counter + 1
-local id = "Node_" .. self.node_counter
+	self.node_counter = self.node_counter + 1
+	local id = "Node_" .. self.node_counter
 
-self.sim:add_node(id, node_type, 0)
+	self.sim:add_node(id, node_type, 0)
 
-local root_node = gui.new_box_node(pos, vmath.vector3(0,0,0))
-gui.set_color(root_node, vmath.vector4(1,1,1,0)) -- 透明父容器
+	local root_node = gui.new_box_node(pos, vmath.vector3(0,0,0))
+	gui.set_color(root_node, vmath.vector4(1,1,1,0))
 
-local bg_node = gui.new_box_node(vmath.vector3(0, 0, 0), vmath.vector3(100, 100, 0))
-gui.set_color(bg_node, NODE_COLORS[node_type] or vmath.vector4(0.5, 0.5, 0.5, 1))
-gui.set_parent(bg_node, root_node)
+	local bg_node = gui.new_box_node(vmath.vector3(0, 0, 0), vmath.vector3(100, 100, 0))
+	gui.set_color(bg_node, NODE_COLORS[node_type] or vmath.vector4(0.5, 0.5, 0.5, 1))
+	gui.set_parent(bg_node, root_node)
 
-local title_node = gui.new_text_node(vmath.vector3(0, 30, 0), id)
-gui.set_font(title_node, "font")
-gui.set_parent(title_node, root_node)
+	local title_node = gui.new_text_node(vmath.vector3(0, 30, 0), id)
+	gui.set_font(title_node, "font")
+	gui.set_parent(title_node, root_node)
 
-local val_text = (node_type == machinations.NODE_TYPE.SOURCE) and "∞" or 
-(node_type == machinations.NODE_TYPE.DRAIN and "(-)" or "0")
-local value_node = gui.new_text_node(vmath.vector3(0, -10, 0), val_text)
-gui.set_font(value_node, "font")
-gui.set_scale(value_node, vmath.vector3(2, 2, 1))
-gui.set_parent(value_node, root_node)
+	local val_text = (node_type == machinations.NODE_TYPE.SOURCE) and "∞" or 
+	(node_type == machinations.NODE_TYPE.DRAIN and "(-)" or "0")
+	local value_node = gui.new_text_node(vmath.vector3(0, -10, 0), val_text)
+	gui.set_font(value_node, "font")
+	gui.set_scale(value_node, vmath.vector3(2, 2, 1))
+	gui.set_parent(value_node, root_node)
 
-self.gui_nodes[id] = {
-	root = root_node,
-	bg = bg_node,
-	val_node = value_node,
-	type = node_type
-}
+	self.gui_nodes[id] = {
+		root = root_node,
+		bg = bg_node,
+		val_node = value_node,
+		type = node_type
+	}
 end
 
 -- 刷新所有连线位置
 local function update_links(self)
-for _, g_link in ipairs(self.gui_links) do
-	local p1 = gui.get_position(self.gui_nodes[g_link.from_id].root)
-	local p2 = gui.get_position(self.gui_nodes[g_link.to_id].root)
-	draw_line_between(self,g_link.line, p1, p2, g_link.text)
-end
+	for _, g_link in ipairs(self.gui_links) do
+		local p1 = gui.get_position(self.gui_nodes[g_link.from_id].root)
+		local p2 = gui.get_position(self.gui_nodes[g_link.to_id].root)
+		draw_line_between(self,g_link.line, p1, p2, g_link.text)
+	end
 end
 
 -- 动态创建一条连线
 local function create_new_link(self, from_id, to_id, rate)
-self.sim:add_link(from_id, to_id, rate)
+	self.sim:add_link(from_id, to_id, rate)
 
-local line_node = gui.new_box_node(vmath.vector3(0,0,0), vmath.vector3(1, 4, 0))
-gui.set_color(line_node, vmath.vector4(0.8, 0.8, 0.8, 1))
+	local line_node = gui.new_box_node(vmath.vector3(0,0,0), vmath.vector3(1, 4, 0))
+	gui.set_color(line_node, vmath.vector4(0.8, 0.8, 0.8, 1))
 
-local rate_node = gui.new_text_node(vmath.vector3(0,0,0), "Rate: " .. rate)
-gui.set_font(rate_node, "font")
-gui.set_color(rate_node, vmath.vector4(1, 1, 0, 1))
+	local rate_node = gui.new_text_node(vmath.vector3(0,0,0), "Rate: " .. rate)
+	gui.set_font(rate_node, "font")
+	gui.set_color(rate_node, vmath.vector4(1, 1, 0, 1))
 
-table.insert(self.gui_links, {
-	from_id = from_id,
-	to_id = to_id,
-	line = line_node,
-	text = rate_node
-})
+	table.insert(self.gui_links, {
+		from_id = from_id,
+		to_id = to_id,
+		line = line_node,
+		text = rate_node
+	})
 
-update_links(self)
+	update_links(self)
 end
 
 -- ================= 定时刷新UI =================
 local function update_gui(self)
-for id, gui_data in pairs(self.gui_nodes) do
-	if gui_data.type == machinations.NODE_TYPE.POOL then
-		local current_val = self.sim.nodes[id].value
-		gui.set_text(gui_data.val_node, tostring(current_val))
-		gui.set_scale(gui_data.bg, vmath.vector3(1.1, 1.1, 1))
-		gui.animate(gui_data.bg, gui.PROP_SCALE, vmath.vector3(1, 1, 1), gui.EASING_OUTQUAD, 0.3)
+	for id, gui_data in pairs(self.gui_nodes) do
+		if gui_data.type == machinations.NODE_TYPE.POOL then
+			local current_val = self.sim.nodes[id].value
+			gui.set_text(gui_data.val_node, tostring(current_val))
+			gui.set_scale(gui_data.bg, vmath.vector3(1.1, 1.1, 1))
+			gui.animate(gui_data.bg, gui.PROP_SCALE, vmath.vector3(1, 1, 1), gui.EASING_OUTQUAD, 0.3)
+		end
 	end
 end
-end
 
-function init(self)
-msg.post(".", "acquire_input_focus")
+-- ================= 模拟逻辑控制 =================
 
-self.sim = machinations.create_simulation()
-
-self.gui_nodes = {}
-self.gui_links = {}
-self.node_counter = 0
-
--- 拖拽交互状态
-self.dragged_node_id = nil
-self.drag_offset = vmath.vector3()
-
--- 【新增】画布中键平移状态
-self.is_panning = false
-self.last_mouse_x = 0
-self.last_mouse_y = 0
-
--- 连线模式状态
-self.is_linking_mode = false    -- 是否处于连线模式
-self.link_start_node_id = nil   -- 连线的起点节点ID
-
--- 临时连线
-self.temp_line = gui.new_box_node(vmath.vector3(0,0,0), vmath.vector3(1, 4, 0))
-gui.set_color(self.temp_line, vmath.vector4(1, 0.5, 0, 1))
-gui.set_enabled(self.temp_line, false)
-
--- 构建顶部工具栏按钮
-self.toolbar_buttons = {}
-create_toolbar_button(self, "Add Source", machinations.NODE_TYPE.SOURCE, vmath.vector3(80, 680, 0))
-create_toolbar_button(self, "Add Pool", machinations.NODE_TYPE.POOL, vmath.vector3(200, 680, 0))
-create_toolbar_button(self, "Add Drain", machinations.NODE_TYPE.DRAIN, vmath.vector3(320, 680, 0))
-create_toolbar_button(self, "Add Link", "LINK", vmath.vector3(440, 680, 0))
-
--- 自动步进
-timer.delay(1.0, true, function()
+local function run_step(self)
 	self.sim:step()
 	update_gui(self)
-end)
 end
 
--- ================= 输入与交互核心 =================
+local function toggle_play(self)
+	self.is_playing = not self.is_playing
+	if self.is_playing then
+		-- 开启定时器
+		self.play_timer = timer.delay(1.0, true, function() run_step(self) end)
+		-- 按钮视觉反馈：变成深蓝色/紫色
+		for _, btn in ipairs(self.control_buttons) do
+			if btn.type == "PLAY" then gui.set_text(btn.label, "PAUSE") end
+		end
+	else
+		-- 停止定时器
+		if self.play_timer then timer.cancel(self.play_timer) end
+		self.play_timer = nil
+		for _, btn in ipairs(self.control_buttons) do
+			if btn.type == "PLAY" then gui.set_text(btn.label, "PLAY") end
+		end
+	end
+end
+
+local function reset_simulation(self)
+	-- 1. 停止播放
+	if self.is_playing then toggle_play(self) end
+	-- 2. 数据清零
+	for id, node in pairs(self.sim.nodes) do
+		node.value = 0
+		node.next_value = 0
+	end
+	self.sim.step_count = 0
+	-- 3. 刷新UI
+	update_gui(self)
+	print("Simulation Reset.")
+end
+
+-- ================= 生命周期 =================
+
+function init(self)
+	msg.post(".", "acquire_input_focus")
+
+	self.sim = machinations.create_simulation()
+	self.gui_nodes = {}
+	self.gui_links = {}
+	self.node_counter = 0
+
+	-- 状态变量
+	self.is_playing = false
+	self.play_timer = nil
+
+	-- 交互状态
+	self.dragged_node_id = nil
+	self.drag_offset = vmath.vector3()
+	self.is_panning = false
+	self.is_linking_mode = false
+	self.link_start_node_id = nil
+
+	-- 临时连线
+	self.temp_line = gui.new_box_node(vmath.vector3(0,0,0), vmath.vector3(1, 4, 0))
+	gui.set_color(self.temp_line, vmath.vector4(1, 0.5, 0, 1))
+	gui.set_enabled(self.temp_line, false)
+
+	-- A. 顶部工具栏 (创建节点)
+	self.toolbar_buttons = {}
+	create_button(self, "Source", machinations.NODE_TYPE.SOURCE, vmath.vector3(80, 680, 0), vmath.vector4(0.2, 0.4, 0.2, 1), self.toolbar_buttons)
+	create_button(self, "Pool", machinations.NODE_TYPE.POOL, vmath.vector3(200, 680, 0), vmath.vector4(0.2, 0.3, 0.5, 1), self.toolbar_buttons)
+	create_button(self, "Drain", machinations.NODE_TYPE.DRAIN, vmath.vector3(320, 680, 0), vmath.vector4(0.5, 0.2, 0.2, 1), self.toolbar_buttons)
+	create_button(self, "Link", "LINK", vmath.vector3(440, 680, 0), vmath.vector4(0.4, 0.4, 0.4, 1), self.toolbar_buttons)
+
+	-- B. 底部控制栏 (Step, Play, Reset)
+	self.control_buttons = {}
+	create_button(self, "STEP", "STEP", vmath.vector3(200, 80, 0), vmath.vector4(0.1, 0.1, 0.6, 1), self.control_buttons)
+	create_button(self, "PLAY", "PLAY", vmath.vector3(320, 80, 0), vmath.vector4(0.1, 0.1, 0.6, 1), self.control_buttons)
+	create_button(self, "RESET", "RESET", vmath.vector3(440, 80, 0), vmath.vector4(0.4, 0.1, 0.1, 1), self.control_buttons)
+end
 
 function on_input(self, action_id, action)
-local mouse_pos = vmath.vector3(action.x, action.y, 0)
+	local mouse_pos = vmath.vector3(action.x, action.y, 0)
 
-if action_id == hash("touch") then
-	if action.pressed then
-		-- 1. 检查是否点击了工具栏按钮
-		for _, btn in ipairs(self.toolbar_buttons) do
-			if gui.pick_node(btn.bg, action.x, action.y) then
-				if btn.type == "LINK" then
-					-- 点击了 "Add Link"，进入连线模式
-					self.is_linking_mode = true
-					self.link_start_node_id = nil
-					gui.set_enabled(self.temp_line, false)
-					print("进入连线模式！请点击起始节点。")
-				else
-					-- 创建普通节点
-					create_new_node(self, btn.type, vmath.vector3(400, 300, 0))
-				end
-				return true
-			end
-		end
-
-		-- 2. 检查是否点中了节点
-		for id, node_data in pairs(self.gui_nodes) do
-			if gui.pick_node(node_data.bg, action.x, action.y) then
-				if self.is_linking_mode then
-					-- 【连线模式下的逻辑】
-					if not self.link_start_node_id then
-						-- 第一次点击：选定起点
-						self.link_start_node_id = id
-						gui.set_enabled(self.temp_line, true)
-						print("选定起点：" .. id .. "，请点击目标节点。")
-					else
-						-- 第二次点击：选定终点并创建连线
-						if id ~= self.link_start_node_id then
-							create_new_link(self, self.link_start_node_id, id, 1)
-							print("成功建立连线！")
-						end
-						-- 创建完毕，退出连线模式
-						self.is_linking_mode = false
-						self.link_start_node_id = nil
-						gui.set_enabled(self.temp_line, false)
+	if action_id == hash("touch") then
+		if action.pressed then
+			-- 1. 检查底部控制按钮 (Step, Play, Reset)
+			for _, btn in ipairs(self.control_buttons) do
+				if gui.pick_node(btn.bg, action.x, action.y) then
+					if btn.type == "STEP" then run_step(self)
+					elseif btn.type == "PLAY" then toggle_play(self)
+					elseif btn.type == "RESET" then reset_simulation(self)
 					end
-				else
-					-- 【正常模式下的逻辑：拖拽】
-					self.dragged_node_id = id
-					local pos = gui.get_position(node_data.root)
-					self.drag_offset.x = pos.x - action.x
-					self.drag_offset.y = pos.y - action.y
+					return true
 				end
-				return true
+			end
+
+			-- 2. 检查顶部工具栏按钮
+			for _, btn in ipairs(self.toolbar_buttons) do
+				if gui.pick_node(btn.bg, action.x, action.y) then
+					if btn.type == "LINK" then
+						self.is_linking_mode = true
+						self.link_start_node_id = nil
+					else
+						create_new_node(self, btn.type, vmath.vector3(action.x, 350, 0))
+					end
+					return true
+				end
+			end
+
+			-- 3. 检查是否点中了节点
+			for id, node_data in pairs(self.gui_nodes) do
+				if gui.pick_node(node_data.bg, action.x, action.y) then
+					if self.is_linking_mode then
+						if not self.link_start_node_id then
+							self.link_start_node_id = id
+							gui.set_enabled(self.temp_line, true)
+						else
+							if id ~= self.link_start_node_id then create_new_link(self, self.link_start_node_id, id, 1) end
+							self.is_linking_mode = false
+							self.link_start_node_id = nil
+							gui.set_enabled(self.temp_line, false)
+						end
+					else
+						self.dragged_node_id = id
+						local pos = gui.get_position(node_data.root)
+						self.drag_offset.x = pos.x - action.x
+						self.drag_offset.y = pos.y - action.y
+					end
+					return true
+				end
+			end
+
+			if self.is_linking_mode then self.is_linking_mode = false gui.set_enabled(self.temp_line, false) end
+
+		elseif action.released then
+			self.dragged_node_id = nil
+		end
+
+	elseif action_id == hash("right_click") then
+		if action.pressed then
+			for id, node_data in pairs(self.gui_nodes) do
+				if gui.pick_node(node_data.bg, action.x, action.y) then
+					if node_data.type == machinations.NODE_TYPE.POOL then
+						self.sim.nodes[id].value = self.sim.nodes[id].value + 10
+						update_gui(self)
+					end
+					return true
+				end
 			end
 		end
 
-		-- 3. 如果处于连线模式，但点击了空白区域，则取消连线模式
-		if self.is_linking_mode then
-			self.is_linking_mode = false
-			self.link_start_node_id = nil
-			gui.set_enabled(self.temp_line, false)
-			print("已取消连线模式。")
-		end
-
-	elseif action.released then
-		self.dragged_node_id = nil
-	end
-
-	-- 【右键操作：仅用于添加资源或取消操作】
-elseif action_id == hash("right_click") then
-	if action.pressed then
-		-- 如果正在连线模式中，右键可以用来安全取消
-		if self.is_linking_mode then
-			self.is_linking_mode = false
-			self.link_start_node_id = nil
-			gui.set_enabled(self.temp_line, false)
-			print("已取消连线模式。")
+	elseif action_id == hash("middle_click") then
+		if action.pressed then
+			self.is_panning = true
+			self.last_mouse_x, self.last_mouse_y = action.x, action.y
 			return true
+		elseif action.released then
+			self.is_panning = false
 		end
+	end
 
-		-- 正常右键：点击 Pool 增加资源
-		for id, node_data in pairs(self.gui_nodes) do
-			if gui.pick_node(node_data.bg, action.x, action.y) then
-				if node_data.type == machinations.NODE_TYPE.POOL then
-					self.sim.nodes[id].value = self.sim.nodes[id].value + 10
-					gui.set_text(node_data.val_node, tostring(self.sim.nodes[id].value))
-				end
-				return true
+	if not action_id then 
+		if self.is_panning then
+			local dx, dy = action.x - self.last_mouse_x, action.y - self.last_mouse_y
+			for _, nd in pairs(self.gui_nodes) do
+				local p = gui.get_position(nd.root)
+				gui.set_position(nd.root, vmath.vector3(p.x + dx, p.y + dy, 0))
 			end
+			update_links(self)
+			self.last_mouse_x, self.last_mouse_y = action.x, action.y
+		elseif self.dragged_node_id then
+			gui.set_position(self.gui_nodes[self.dragged_node_id].root, vmath.vector3(action.x + self.drag_offset.x, action.y + self.drag_offset.y, 0))
+			update_links(self)
+		elseif self.is_linking_mode and self.link_start_node_id then
+			draw_line_between(self, self.temp_line, gui.get_position(self.gui_nodes[self.link_start_node_id].root), mouse_pos)
 		end
 	end
-
-	-- 【新增】中键平移画布操作
-elseif action_id == hash("middle_click") then
-	if action.pressed then
-		self.is_panning = true
-		self.last_mouse_x = action.x
-		self.last_mouse_y = action.y
-		return true
-	elseif action.released then
-		self.is_panning = false
-		return true
-	end
-end
-
--- 【鼠标移动：更新拖拽节点、更新临时连线、或平移视野】
-if not action_id then 
-	if self.is_panning then
-		-- 计算鼠标移动量 (Delta)
-		local dx = action.x - self.last_mouse_x
-		local dy = action.y - self.last_mouse_y
-
-		-- 移动所有的节点
-		for id, node_data in pairs(self.gui_nodes) do
-			local pos = gui.get_position(node_data.root)
-			gui.set_position(node_data.root, vmath.vector3(pos.x + dx, pos.y + dy, 0))
-		end
-
-		-- 刷新连线
-		update_links(self)
-
-		-- 更新上一次的鼠标坐标
-		self.last_mouse_x = action.x
-		self.last_mouse_y = action.y
-
-	elseif self.dragged_node_id then
-		-- 左键拖拽节点
-		local new_pos = vmath.vector3(action.x + self.drag_offset.x, action.y + self.drag_offset.y, 0)
-		gui.set_position(self.gui_nodes[self.dragged_node_id].root, new_pos)
-		update_links(self)
-
-	elseif self.is_linking_mode and self.link_start_node_id then
-		-- 连线模式中，且已选定起点：画出跟随鼠标的临时线
-		local p1 = gui.get_position(self.gui_nodes[self.link_start_node_id].root)
-		draw_line_between(self, self.temp_line, p1, mouse_pos)
-	end
-end
 end
