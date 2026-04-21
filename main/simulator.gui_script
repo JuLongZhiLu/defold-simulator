@@ -1,0 +1,117 @@
+local machinations = require("main.machinations_core") -- 请确保路径正确
+
+-- 节点类型对应的颜色 (RGBA)
+local NODE_COLORS = {[machinations.NODE_TYPE.SOURCE] = vmath.vector4(0.2, 0.8, 0.2, 1), -- 绿色
+[machinations.NODE_TYPE.POOL]   = vmath.vector4(0.2, 0.5, 0.9, 1), -- 蓝色
+[machinations.NODE_TYPE.DRAIN]  = vmath.vector4(0.9, 0.2, 0.2, 1)  -- 红色
+}
+
+-- 帮助函数：在两点之间画一条线 (利用 Box Node 旋转和拉伸实现)
+local function draw_line(p1, p2, color)
+local dx = p2.x - p1.x
+local dy = p2.y - p1.y
+local distance = math.sqrt(dx * dx + dy * dy)
+local angle = math.atan2(dy, dx)
+
+-- 中点坐标
+local mid_x = p1.x + dx / 2
+local mid_y = p1.y + dy / 2
+
+-- 创建连线的节点 (厚度为4)
+local line_node = gui.new_box_node(vmath.vector3(mid_x, mid_y, 0), vmath.vector3(distance, 4, 0))
+gui.set_color(line_node, color or vmath.vector4(0.8, 0.8, 0.8, 1))
+
+-- 旋转线条指向目标
+gui.set_rotation(line_node, vmath.quat_rotation_z(angle))
+
+return line_node, mid_x, mid_y
+end
+
+function init(self)
+-- 用于存储界面节点引用的表，方便后续更新数值
+self.gui_nodes = {}
+
+-- 1. 初始化核心模拟器
+self.sim = machinations.create_simulation()
+
+-- 2. 注册节点数据和它们的屏幕坐标 (x, y)
+local setup_data = {
+	{ id = "Gold_Mine", type = machinations.NODE_TYPE.SOURCE, val = 0, pos = vmath.vector3(200, 400, 0) },
+	{ id = "Treasury",  type = machinations.NODE_TYPE.POOL,   val = 0, pos = vmath.vector3(500, 400, 0) },
+	{ id = "Upkeep",    type = machinations.NODE_TYPE.DRAIN,  val = 0, pos = vmath.vector3(800, 400, 0) }
+}
+
+-- 添加到模拟器并生成 GUI 节点
+for _, data in ipairs(setup_data) do
+	self.sim:add_node(data.id, data.type, data.val)
+
+	-- 绘制节点背景 (正方形 Box)
+	local bg_node = gui.new_box_node(data.pos, vmath.vector3(100, 100, 0))
+	gui.set_color(bg_node, NODE_COLORS[data.type] or vmath.vector4(0.5, 0.5, 0.5, 1))
+
+	-- 绘制节点名称 (ID)
+	local title_node = gui.new_text_node(data.pos + vmath.vector3(0, 30, 0), data.id)
+	gui.set_font(title_node, "font")
+
+	-- 绘制节点数值 (Value) - 只有 Pool 我们关心具体数量，Source和Drain可以显示标识
+	local val_text = tostring(data.val)
+	if data.type == machinations.NODE_TYPE.SOURCE then val_text = "∞" end
+	if data.type == machinations.NODE_TYPE.DRAIN  then val_text = "(-)" end
+
+	local value_node = gui.new_text_node(data.pos + vmath.vector3(0, -10, 0), val_text)
+	gui.set_font(value_node, "font")
+	gui.set_scale(value_node, vmath.vector3(2, 2, 1)) -- 数字放大一点
+
+	-- 保存引用以便更新
+	self.gui_nodes[data.id] = {
+		bg = bg_node,
+		val_node = value_node,
+		pos = data.pos,
+		type = data.type
+	}
+end
+
+-- 3. 建立连线数据并在模拟器中注册
+local links_data = {
+	{ from = "Gold_Mine", to = "Treasury", rate = 5 },
+	{ from = "Treasury",  to = "Upkeep",   rate = 2 }
+}
+
+for _, link in ipairs(links_data) do
+	self.sim:add_link(link.from, link.to, link.rate)
+
+	-- 在 GUI 中画出两点之间的线段
+	local p1 = self.gui_nodes[link.from].pos
+	local p2 = self.gui_nodes[link.to].pos
+
+	-- 画线并获取中点
+	local line_node, mid_x, mid_y = draw_line(p1, p2, vmath.vector4(1, 1, 1, 0.8))
+
+	-- 在线段中间添加文本，显示速率 (Rate)
+	local rate_node = gui.new_text_node(vmath.vector3(mid_x, mid_y + 20, 0), "Rate: " .. link.rate .. " ->")
+	gui.set_font(rate_node, "font")
+	gui.set_color(rate_node, vmath.vector4(1, 1, 0, 1)) -- 黄色文字
+end
+
+-- 刷新界面数值
+local function update_gui(self)
+	for id, gui_data in pairs(self.gui_nodes) do
+		-- 只更新资源池类型 (Pool) 的数值显示
+		if gui_data.type == machinations.NODE_TYPE.POOL then
+			local current_val = self.sim.nodes[id].value
+			gui.set_text(gui_data.val_node, tostring(current_val))
+
+			-- 做一个简单的缩放动画，代表收到/消耗了资源
+			gui.set_scale(gui_data.bg, vmath.vector3(1.1, 1.1, 1))
+			gui.animate(gui_data.bg, gui.PROP_SCALE, vmath.vector3(1, 1, 1), gui.EASING_OUTQUAD, 0.3)
+		end
+	end
+end
+
+-- 4. 开启定时器，自动步进并刷新界面
+timer.delay(1.0, true, function()
+	self.sim:step()
+	update_gui(self)
+end)
+end
+

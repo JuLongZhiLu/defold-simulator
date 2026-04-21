@@ -1,0 +1,7 @@
+script: "/main/simulator.gui_script"
+fonts {
+  name: "font"
+  font: "/builtins/fonts/default.font"
+}
+material: "/builtins/materials/gui.material"
+adjust_reference: ADJUST_REFERENCE_PARENT
