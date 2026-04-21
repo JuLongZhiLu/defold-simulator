@@ -41,7 +41,7 @@ local id = "Node_" .. self.node_counter
 self.sim:add_node(id, node_type, 0)
 
 local root_node = gui.new_box_node(pos, vmath.vector3(0,0,0))
-gui.set_color(root_node, vmath.vector4(1,1,1,0))
+gui.set_color(root_node, vmath.vector4(1,1,1,0)) -- 透明父容器
 
 local bg_node = gui.new_box_node(vmath.vector3(0, 0, 0), vmath.vector3(100, 100, 0))
 gui.set_color(bg_node, NODE_COLORS[node_type] or vmath.vector4(0.5, 0.5, 0.5, 1))
@@ -121,7 +121,12 @@ self.node_counter = 0
 self.dragged_node_id = nil
 self.drag_offset = vmath.vector3()
 
--- 【新增】连线模式状态
+-- 【新增】画布中键平移状态
+self.is_panning = false
+self.last_mouse_x = 0
+self.last_mouse_y = 0
+
+-- 连线模式状态
 self.is_linking_mode = false    -- 是否处于连线模式
 self.link_start_node_id = nil   -- 连线的起点节点ID
 
@@ -135,7 +140,6 @@ self.toolbar_buttons = {}
 create_toolbar_button(self, "Add Source", machinations.NODE_TYPE.SOURCE, vmath.vector3(80, 680, 0))
 create_toolbar_button(self, "Add Pool", machinations.NODE_TYPE.POOL, vmath.vector3(200, 680, 0))
 create_toolbar_button(self, "Add Drain", machinations.NODE_TYPE.DRAIN, vmath.vector3(320, 680, 0))
--- 【新增】连线按钮
 create_toolbar_button(self, "Add Link", "LINK", vmath.vector3(440, 680, 0))
 
 -- 自动步进
@@ -236,15 +240,46 @@ elseif action_id == hash("right_click") then
 			end
 		end
 	end
+
+	-- 【新增】中键平移画布操作
+elseif action_id == hash("middle_click") then
+	if action.pressed then
+		self.is_panning = true
+		self.last_mouse_x = action.x
+		self.last_mouse_y = action.y
+		return true
+	elseif action.released then
+		self.is_panning = false
+		return true
+	end
 end
 
--- 【鼠标移动：更新拖拽节点或更新临时连线】
+-- 【鼠标移动：更新拖拽节点、更新临时连线、或平移视野】
 if not action_id then 
-	if self.dragged_node_id then
+	if self.is_panning then
+		-- 计算鼠标移动量 (Delta)
+		local dx = action.x - self.last_mouse_x
+		local dy = action.y - self.last_mouse_y
+
+		-- 移动所有的节点
+		for id, node_data in pairs(self.gui_nodes) do
+			local pos = gui.get_position(node_data.root)
+			gui.set_position(node_data.root, vmath.vector3(pos.x + dx, pos.y + dy, 0))
+		end
+
+		-- 刷新连线
+		update_links(self)
+
+		-- 更新上一次的鼠标坐标
+		self.last_mouse_x = action.x
+		self.last_mouse_y = action.y
+
+	elseif self.dragged_node_id then
 		-- 左键拖拽节点
 		local new_pos = vmath.vector3(action.x + self.drag_offset.x, action.y + self.drag_offset.y, 0)
 		gui.set_position(self.gui_nodes[self.dragged_node_id].root, new_pos)
 		update_links(self)
+
 	elseif self.is_linking_mode and self.link_start_node_id then
 		-- 连线模式中，且已选定起点：画出跟随鼠标的临时线
 		local p1 = gui.get_position(self.gui_nodes[self.link_start_node_id].root)
